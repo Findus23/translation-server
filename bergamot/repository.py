@@ -3,7 +3,6 @@ import os
 import tarfile
 import typing as t
 from abc import ABC, abstractmethod
-from functools import partial
 from urllib.parse import urlparse
 
 import requests
@@ -184,6 +183,7 @@ class TranslateLocallyLike(Repository):
         return fname_without_extension
 
 
+
 class Aggregator:
     def __init__(self, repositories: t.List[Repository]):
         self.repositories = {}
@@ -194,6 +194,7 @@ class Aggregator:
 
         # Default is self.repostiory
         self.default_repository = repositories[0]
+        self.graph = None
 
     def update(self, name: str) -> None:
         self.repositories.get(name, self.default_repository).update()
@@ -216,3 +217,50 @@ class Aggregator:
 
     def download(self, name: str, model_identifier: str) -> None:
         self.repositories.get(name, self.default_repository).download(model_identifier)
+
+    def models_by_lang_code(self, filter_downloaded=True) -> dict[str, dict[str, set]]:
+        from_languages = {}
+        for identifier in self.models("browsermt", filter_downloaded=filter_downloaded):
+            model = self.model("browsermt", identifier)
+            # if model["type"] not in ["base"]:
+            #     continue
+            split_name = model["code"].split("-")
+            from_code = split_name[0]
+            to_code = split_name[1]
+            from_name = model["src"]
+            if from_code not in from_languages:
+                from_languages[from_code] = {"code": from_code, "name": from_name, "targets": {to_code}}
+            else:
+                from_languages[from_code]["targets"].add(to_code)
+        return from_languages
+
+    def build_graph(self):
+        self.graph={}
+        for identifier in self.models("browsermt", filter_downloaded=False):
+            model = self.model("browsermt", identifier)
+            split_name = model["code"].split("-")
+            from_code = split_name[0]
+            to_code = split_name[1]
+
+            if from_code not in self.graph:
+                self.graph[from_code] = {}
+            self.graph[from_code][to_code] = identifier
+        print(self.graph)
+
+    def get_model_identifier_for_translation(self, source_lang: str, target_lang: str) -> t.Optional[str]:
+        if self.graph is None:
+            self.build_graph()
+        if source_lang in self.graph and target_lang in self.graph[source_lang]:
+            return self.graph[source_lang][target_lang]
+        return None
+
+    def get_model_identifiers_for_pivot_translation(self, source_lang: str, target_lang: str) -> list[str]:
+        if self.graph is None:
+            self.build_graph()
+        if source_lang not in self.graph:
+            return []
+        for intermediate_lang in self.graph[source_lang]:
+            if intermediate_lang in self.graph and target_lang in self.graph[intermediate_lang]:
+                return [self.graph[source_lang][intermediate_lang], self.graph[intermediate_lang][target_lang]]
+        return []
+
