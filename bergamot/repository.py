@@ -183,7 +183,6 @@ class TranslateLocallyLike(Repository):
         return fname_without_extension
 
 
-
 class Aggregator:
     def __init__(self, repositories: t.List[Repository]):
         self.repositories = {}
@@ -195,6 +194,7 @@ class Aggregator:
         # Default is self.repostiory
         self.default_repository = repositories[0]
         self.graph = None
+        self.language_names = {}
 
     def update(self, name: str) -> None:
         self.repositories.get(name, self.default_repository).update()
@@ -234,14 +234,44 @@ class Aggregator:
                 from_languages[from_code]["targets"].add(to_code)
         return from_languages
 
+    def all_translation_options(self):
+        if self.graph is None:
+            self.build_graph()
+
+        result = []
+
+        for source in self.graph:
+            reachable = set()
+
+            # Add direct connections
+            for direct_target in self.graph[source]:
+                reachable.add(direct_target)
+
+            # Add indirect connections with exactly one intermediate
+            for intermediate in self.graph[source]:
+                if intermediate in self.graph:
+                    for indirect_target in self.graph[intermediate]:
+                        if indirect_target != source:  # Avoid cycles back to source
+                            reachable.add(indirect_target)
+
+            # Add entry for this language
+            result.append({
+                "code": source,
+                "name": self.language_names[source],
+                "targets": reachable  # Sort for consistency
+            })
+
+        return result
+
     def build_graph(self):
-        self.graph={}
+        self.graph = {}
         for identifier in self.models("browsermt", filter_downloaded=False):
             model = self.model("browsermt", identifier)
             split_name = model["code"].split("-")
             from_code = split_name[0]
             to_code = split_name[1]
-
+            from_name = model["src"]
+            self.language_names[from_code] = from_name
             if from_code not in self.graph:
                 self.graph[from_code] = {}
             self.graph[from_code][to_code] = identifier
@@ -263,4 +293,3 @@ class Aggregator:
             if intermediate_lang in self.graph and target_lang in self.graph[intermediate_lang]:
                 return [self.graph[source_lang][intermediate_lang], self.graph[intermediate_lang][target_lang]]
         return []
-

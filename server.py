@@ -23,6 +23,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# @app.exception_handler(RequestValidationError)
+# async def validation_exception_handler(request: Request, exc: RequestValidationError):
+#     exc_str = f'{exc}'.replace('\n', ' ').replace('   ', ' ')
+#     print(f"{request}: {exc_str}")
+#     raw_body = await request.body()
+#     raw_form = await request.form()
+#     print(f"{raw_body}",flush=True)
+#     print(f"{raw_form}",flush=True)
+#     print(f"{request.headers}",flush=True)
+#     content = {'status_code': 10422, 'message': exc_str, 'data': None}
+#     return JSONResponse(content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+
 service = Service(ServiceConfig(numWorkers=1, logLevel="info", cacheSize=100))
 
 
@@ -41,7 +54,7 @@ class TranslateRequest(BaseModel):
     source: str
     target: str
     format: Literal["text", "html"]
-    alternatives: Optional[int]
+    alternatives: Optional[int] = None
     api_key: str
 
 
@@ -92,8 +105,8 @@ class LanguageResponseEntry(BaseModel):
 def languages() -> list[LanguageResponseEntry]:
     from_languages = [
         LanguageResponseEntry.model_validate(v)
-        for k, v in
-        REPOSITORY.models_by_lang_code().items()
+        for v in
+        REPOSITORY.all_translation_options()
     ]
     return from_languages
 
